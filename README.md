@@ -101,10 +101,28 @@ Copy `.env.example` to `.env.local` and fill:
 ```bash
 WHOP_RESEARCH_PRODUCT_ID=
 WHOP_PRO_PRODUCT_ID=
+WHOP_WEBHOOK_SECRET=
 ```
 
 When a product ID exists, `/api/checkout` returns a Whop checkout URL. Without IDs,
 it keeps local test activation for development.
+
+Whop webhook setup:
+
+- Endpoint: `/api/webhooks/whop`
+- Local tunnel target: `http://localhost:3001/api/webhooks/whop`
+- Production URL: `${QUANTPILOT_APP_URL}/api/webhooks/whop`
+- Required event: `payment.succeeded`
+- Optional event: `membership.activated`
+
+The webhook handler verifies Standard Webhooks headers from Whop before granting
+access, then records the checkout as `captured`.
+
+With localhost running and `WHOP_WEBHOOK_SECRET` set, replay a signed test event:
+
+```bash
+npm run test:whop-webhook
+```
 
 ## Supabase Setup
 

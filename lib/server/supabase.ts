@@ -68,11 +68,11 @@ export async function supabaseGetLatestCheckout(email: string) {
 
 export async function supabaseRecordCheckout(record: CheckoutRecord) {
   const [row] = await supabaseRequest<CheckoutRow[]>(
-    `/checkouts`,
+    `/checkouts?on_conflict=id`,
     {
       method: "POST",
       body: JSON.stringify([toCheckoutRow(record)]),
-      headers: { Prefer: "return=representation" },
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
     },
   );
   return fromCheckoutRow(row);
