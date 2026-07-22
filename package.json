@@ -6,7 +6,8 @@
     "dev": "next dev --webpack",
     "build": "next build",
     "start": "next start",
-    "mcp": "node mcp/quantpilot-mcp.mjs"
+    "mcp": "node mcp/quantpilot-mcp.mjs",
+    "migrate:supabase": "node scripts/migrate-local-to-supabase.mjs"
   },
   "dependencies": {
     "next": "16.2.10",

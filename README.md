@@ -106,6 +106,27 @@ WHOP_PRO_PRODUCT_ID=
 When a product ID exists, `/api/checkout` returns a Whop checkout URL. Without IDs,
 it keeps local test activation for development.
 
+## Supabase Setup
+
+QuantPilot uses local JSON storage when Supabase env vars are empty. For a real
+backend, create a Supabase project, run `supabase/schema.sql` in the SQL editor,
+then set:
+
+```bash
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+```
+
+The service role key must stay server-only. When both vars are present,
+customers, checkouts, projects, reports, and access checks use Supabase instead
+of `data/traderlab.json`.
+
+To move current local data into Supabase after running the schema:
+
+```bash
+npm run migrate:supabase
+```
+
 ## Engine Files
 
 - `lib/traderlab/compiler.ts` - deterministic strategy compiler and Pine generator

@@ -1,5 +1,17 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
+import {
+  isSupabaseConfigured,
+  storeBackend,
+  supabaseDeleteProject,
+  supabaseGetCustomer,
+  supabaseGetLatestCheckout,
+  supabaseGetProject,
+  supabaseListProjects,
+  supabaseRecordCheckout,
+  supabaseSaveProject,
+  supabaseUpsertCustomer,
+} from "@/lib/server/supabase";
 import type { CheckoutRecord, CustomerAccess, Plan, StrategyProject } from "@/lib/traderlab/types";
 
 type Customer = {
@@ -41,6 +53,10 @@ export async function writeDb(db: Database) {
 }
 
 export async function upsertCustomer(email: string, plan: Plan) {
+  if (isSupabaseConfigured()) {
+    return supabaseUpsertCustomer(email, plan);
+  }
+
   const db = await readDb();
   const now = new Date().toISOString();
   const existing = db.customers.find((customer) => customer.email === email);
@@ -55,6 +71,10 @@ export async function upsertCustomer(email: string, plan: Plan) {
 }
 
 export async function getCustomer(email: string) {
+  if (isSupabaseConfigured()) {
+    return supabaseGetCustomer(email);
+  }
+
   const db = await readDb();
   return db.customers.find((customer) => customer.email === email) || null;
 }
@@ -73,9 +93,14 @@ export async function getAccessForEmail(email: string): Promise<CustomerAccess> 
     };
   }
 
-  const db = await readDb();
-  const customer = db.customers.find((item) => item.email === normalized);
-  const checkout = db.checkouts.find((item) => item.email === normalized);
+  const backendIsSupabase = isSupabaseConfigured();
+  const db = backendIsSupabase ? null : await readDb();
+  const customer = backendIsSupabase
+    ? await supabaseGetCustomer(normalized)
+    : db!.customers.find((item) => item.email === normalized) || null;
+  const checkout = backendIsSupabase
+    ? await supabaseGetLatestCheckout(normalized)
+    : db!.checkouts.find((item) => item.email === normalized) || null;
 
   if (!customer) {
     return {
@@ -97,6 +122,10 @@ export async function getAccessForEmail(email: string): Promise<CustomerAccess> 
 }
 
 export async function recordCheckout(record: CheckoutRecord) {
+  if (isSupabaseConfigured()) {
+    return supabaseRecordCheckout(record);
+  }
+
   const db = await readDb();
   db.checkouts.unshift(record);
   await writeDb(db);
@@ -104,6 +133,10 @@ export async function recordCheckout(record: CheckoutRecord) {
 }
 
 export async function listProjects(email: string) {
+  if (isSupabaseConfigured()) {
+    return supabaseListProjects(email);
+  }
+
   const db = await readDb();
   return db.projects
     .filter((project) => project.email === email)
@@ -111,11 +144,19 @@ export async function listProjects(email: string) {
 }
 
 export async function getProject(id: string) {
+  if (isSupabaseConfigured()) {
+    return supabaseGetProject(id);
+  }
+
   const db = await readDb();
   return db.projects.find((project) => project.id === id) || null;
 }
 
 export async function saveProject(project: StrategyProject) {
+  if (isSupabaseConfigured()) {
+    return supabaseSaveProject(project);
+  }
+
   const db = await readDb();
   const index = db.projects.findIndex((existing) => existing.id === project.id);
   if (index >= 0) {
@@ -128,9 +169,17 @@ export async function saveProject(project: StrategyProject) {
 }
 
 export async function deleteProject(id: string, email: string) {
+  if (isSupabaseConfigured()) {
+    return supabaseDeleteProject(id, email);
+  }
+
   const db = await readDb();
   const before = db.projects.length;
   db.projects = db.projects.filter((project) => !(project.id === id && project.email === email));
   await writeDb(db);
   return db.projects.length !== before;
+}
+
+export function getStoreBackend() {
+  return storeBackend();
 }
