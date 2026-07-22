@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
+import { assertSameOrigin, rateLimit, readJsonLimited } from "@/lib/server/security";
 import { computeTradeStats, dailyPnl } from "@/lib/traderlab/metrics";
 import { parseTradeCsv } from "@/lib/traderlab/tradeLog";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
+  const originError = assertSameOrigin(request);
+  if (originError) return originError;
+
+  const limited = rateLimit(request, "trade-log", { limit: 40, windowMs: 60_000 });
+  if (limited) return limited;
+
+  const { body, error } = await readJsonLimited<Record<string, unknown>>(request, 500_000);
+  if (error) return error;
+
   const csv = typeof body?.csv === "string" ? body.csv : "";
 
   if (!csv.trim()) {

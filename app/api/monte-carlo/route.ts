@@ -1,9 +1,18 @@
 import { NextResponse } from "next/server";
+import { assertSameOrigin, rateLimit, readJsonLimited } from "@/lib/server/security";
 import { sampleMonteCarloPaths, runBothMonteCarlo } from "@/lib/traderlab/monteCarlo";
 import { FIRM_PRESETS, simulateChallenge, solvePositionSize } from "@/lib/traderlab/propFirm";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
+  const originError = assertSameOrigin(request);
+  if (originError) return originError;
+
+  const limited = rateLimit(request, "monte-carlo", { limit: 35, windowMs: 60_000 });
+  if (limited) return limited;
+
+  const { body, error } = await readJsonLimited<Record<string, unknown>>(request, 250_000);
+  if (error) return error;
+
   const pnl = Array.isArray(body?.pnl) ? body.pnl.map(Number).filter(Number.isFinite) : [];
   const dailyPnl = Array.isArray(body?.dailyPnl) ? body.dailyPnl.map(Number).filter(Number.isFinite) : [];
   const firmId = typeof body?.firm === "string" ? body.firm : "topstep_50k";

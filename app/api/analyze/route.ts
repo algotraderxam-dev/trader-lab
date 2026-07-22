@@ -1,10 +1,19 @@
 import { NextResponse } from "next/server";
+import { assertSameOrigin, rateLimit, readJsonLimited } from "@/lib/server/security";
 import { analyzeStrategy } from "@/lib/traderlab/engine";
 import type { Trade } from "@/lib/traderlab/metrics";
 import { parseTradeCsv } from "@/lib/traderlab/tradeLog";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
+  const originError = assertSameOrigin(request);
+  if (originError) return originError;
+
+  const limited = rateLimit(request, "analyze", { limit: 40, windowMs: 60_000 });
+  if (limited) return limited;
+
+  const { body, error } = await readJsonLimited<Record<string, unknown>>(request, 350_000);
+  if (error) return error;
+
   const text = typeof body?.text === "string" ? body.text.trim() : "";
 
   if (text.length < 20) {

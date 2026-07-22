@@ -76,6 +76,14 @@ MCP tools:
 - `POST /api/checkout` - local test activation now, Whop redirect when env IDs are configured
 - `GET /report/:id` - public report page for sales/proof links
 
+## Security MVP
+
+- Security headers are applied through `proxy.ts`: content-type sniffing blocked, framing denied, referrer policy set, browser permissions restricted, and a same-origin CSP enabled.
+- Mutating API routes enforce same-origin browser requests, request body size limits, and per-IP in-memory rate limits.
+- Project list, save, update, delete, and demo seeding require active QuantPilot access from `/api/access`.
+- Project updates require the submitted email to match the saved project owner.
+- Shareable report routes are intentionally public because report links are part of the sales workflow.
+
 ## Sellable MVP Flow
 
 1. Visitor lands on `/` and sees QuantPilot as an AI agent workspace.

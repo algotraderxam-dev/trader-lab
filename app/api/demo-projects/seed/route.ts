@@ -1,5 +1,11 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import {
+  assertSameOrigin,
+  rateLimit,
+  readJsonLimited,
+  requireActiveAccess,
+} from "@/lib/server/security";
 import { listProjects, saveProject } from "@/lib/server/store";
 import { DEMO_EMAIL, DEMO_STRATEGIES } from "@/lib/traderlab/demoStrategies";
 import { analyzeStrategy } from "@/lib/traderlab/engine";
@@ -7,11 +13,23 @@ import { parseTradeCsv } from "@/lib/traderlab/tradeLog";
 import type { StrategyProject } from "@/lib/traderlab/types";
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
+  const originError = assertSameOrigin(request);
+  if (originError) return originError;
+
+  const limited = rateLimit(request, "demo-seed", { limit: 20, windowMs: 60_000 });
+  if (limited) return limited;
+
+  const { body, error } = await readJsonLimited<Record<string, unknown>>(request, 20_000);
+  if (error) return error;
+
   const email =
     typeof body?.email === "string" && body.email.trim().includes("@")
       ? body.email.trim().toLowerCase()
       : DEMO_EMAIL;
+
+  const accessCheck = await requireActiveAccess(email);
+  if (accessCheck.error) return accessCheck.error;
+
   const now = new Date().toISOString();
   const projects: StrategyProject[] = [];
   const existing = await listProjects(email);

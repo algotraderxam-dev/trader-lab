@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { NextResponse } from "next/server";
+import { assertSameOrigin, rateLimit, readJsonLimited } from "@/lib/server/security";
 import { recordCheckout, upsertCustomer } from "@/lib/server/store";
 import { PRICE_BY_PLAN, whopCheckoutUrl, whopIsConfigured } from "@/lib/server/whop";
 import type { Plan } from "@/lib/traderlab/types";
@@ -7,7 +8,15 @@ import type { Plan } from "@/lib/traderlab/types";
 type PaidPlan = Exclude<Plan, "demo">;
 
 export async function POST(request: Request) {
-  const body = await request.json().catch(() => null);
+  const originError = assertSameOrigin(request);
+  if (originError) return originError;
+
+  const limited = rateLimit(request, "checkout", { limit: 10, windowMs: 60_000 });
+  if (limited) return limited;
+
+  const { body, error } = await readJsonLimited<Record<string, unknown>>(request, 20_000);
+  if (error) return error;
+
   const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
   const plan: PaidPlan | null = body?.plan === "research" || body?.plan === "pro" ? body.plan : null;
 
