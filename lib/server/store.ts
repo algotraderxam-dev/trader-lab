@@ -1,0 +1,94 @@
+import { mkdir, readFile, writeFile } from "fs/promises";
+import path from "path";
+import type { CheckoutRecord, Plan, StrategyProject } from "@/lib/traderlab/types";
+
+type Customer = {
+  email: string;
+  plan: Plan;
+  createdAt: string;
+  updatedAt: string;
+};
+
+type Database = {
+  customers: Customer[];
+  checkouts: CheckoutRecord[];
+  projects: StrategyProject[];
+};
+
+const DATA_DIR = path.join(process.cwd(), "data");
+const DB_PATH = path.join(DATA_DIR, "traderlab.json");
+
+const EMPTY_DB: Database = {
+  customers: [],
+  checkouts: [],
+  projects: [],
+};
+
+export async function readDb(): Promise<Database> {
+  await mkdir(DATA_DIR, { recursive: true });
+  try {
+    const raw = await readFile(DB_PATH, "utf8");
+    return { ...EMPTY_DB, ...JSON.parse(raw) };
+  } catch {
+    await writeDb(EMPTY_DB);
+    return structuredClone(EMPTY_DB);
+  }
+}
+
+export async function writeDb(db: Database) {
+  await mkdir(DATA_DIR, { recursive: true });
+  await writeFile(DB_PATH, `${JSON.stringify(db, null, 2)}\n`, "utf8");
+}
+
+export async function upsertCustomer(email: string, plan: Plan) {
+  const db = await readDb();
+  const now = new Date().toISOString();
+  const existing = db.customers.find((customer) => customer.email === email);
+  if (existing) {
+    existing.plan = plan;
+    existing.updatedAt = now;
+  } else {
+    db.customers.push({ email, plan, createdAt: now, updatedAt: now });
+  }
+  await writeDb(db);
+  return db.customers.find((customer) => customer.email === email)!;
+}
+
+export async function recordCheckout(record: CheckoutRecord) {
+  const db = await readDb();
+  db.checkouts.unshift(record);
+  await writeDb(db);
+  return record;
+}
+
+export async function listProjects(email: string) {
+  const db = await readDb();
+  return db.projects
+    .filter((project) => project.email === email)
+    .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
+}
+
+export async function getProject(id: string) {
+  const db = await readDb();
+  return db.projects.find((project) => project.id === id) || null;
+}
+
+export async function saveProject(project: StrategyProject) {
+  const db = await readDb();
+  const index = db.projects.findIndex((existing) => existing.id === project.id);
+  if (index >= 0) {
+    db.projects[index] = project;
+  } else {
+    db.projects.unshift(project);
+  }
+  await writeDb(db);
+  return project;
+}
+
+export async function deleteProject(id: string, email: string) {
+  const db = await readDb();
+  const before = db.projects.length;
+  db.projects = db.projects.filter((project) => !(project.id === id && project.email === email));
+  await writeDb(db);
+  return db.projects.length !== before;
+}
