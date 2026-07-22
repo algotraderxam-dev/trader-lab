@@ -95,3 +95,11 @@ create policy "Customers can delete their projects"
 on public.projects
 for delete
 using (email = (auth.jwt() ->> 'email'));
+
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on public.customers to service_role;
+grant select, insert, update, delete on public.checkouts to service_role;
+grant select, insert, update, delete on public.projects to service_role;
+grant select on public.customers to authenticated;
+grant select on public.checkouts to authenticated;
+grant select, insert, update, delete on public.projects to authenticated;

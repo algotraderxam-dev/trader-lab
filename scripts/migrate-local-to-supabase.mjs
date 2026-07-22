@@ -13,8 +13,9 @@ if (!supabaseUrl || !serviceRoleKey) {
 
 const dbPath = path.join(process.cwd(), "data", "traderlab.json");
 const db = JSON.parse(await readFile(dbPath, "utf8"));
+const customers = mergeCustomers(db.customers || [], db.checkouts || []);
 
-await upsert("customers", (db.customers || []).map(toCustomerRow), "email");
+await upsert("customers", customers.map(toCustomerRow), "email");
 await insert("checkouts", (db.checkouts || []).map(toCheckoutRow));
 await upsert("projects", (db.projects || []).map(toProjectRow), "id");
 
@@ -22,7 +23,7 @@ console.log(
   JSON.stringify(
     {
       migrated: {
-        customers: db.customers?.length || 0,
+        customers: customers.length,
         checkouts: db.checkouts?.length || 0,
         projects: db.projects?.length || 0,
       },
@@ -83,6 +84,20 @@ function toCustomerRow(customer) {
     created_at: customer.createdAt,
     updated_at: customer.updatedAt,
   };
+}
+
+function mergeCustomers(customers, checkouts) {
+  const byEmail = new Map(customers.map((customer) => [customer.email, customer]));
+  for (const checkout of checkouts) {
+    if (byEmail.has(checkout.email)) continue;
+    byEmail.set(checkout.email, {
+      email: checkout.email,
+      plan: checkout.plan,
+      createdAt: checkout.createdAt,
+      updatedAt: checkout.createdAt,
+    });
+  }
+  return [...byEmail.values()];
 }
 
 function toProjectRow(project) {
