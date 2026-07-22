@@ -1,6 +1,6 @@
 import { mkdir, readFile, writeFile } from "fs/promises";
 import path from "path";
-import type { CheckoutRecord, Plan, StrategyProject } from "@/lib/traderlab/types";
+import type { CheckoutRecord, CustomerAccess, Plan, StrategyProject } from "@/lib/traderlab/types";
 
 type Customer = {
   email: string;
@@ -52,6 +52,48 @@ export async function upsertCustomer(email: string, plan: Plan) {
   }
   await writeDb(db);
   return db.customers.find((customer) => customer.email === email)!;
+}
+
+export async function getCustomer(email: string) {
+  const db = await readDb();
+  return db.customers.find((customer) => customer.email === email) || null;
+}
+
+export async function getAccessForEmail(email: string): Promise<CustomerAccess> {
+  const normalized = email.trim().toLowerCase();
+  const now = new Date().toISOString();
+
+  if (!normalized || normalized === "demo@quantpilot.local") {
+    return {
+      email: "demo@quantpilot.local",
+      plan: "demo",
+      active: true,
+      source: "demo",
+      updatedAt: now,
+    };
+  }
+
+  const db = await readDb();
+  const customer = db.customers.find((item) => item.email === normalized);
+  const checkout = db.checkouts.find((item) => item.email === normalized);
+
+  if (!customer) {
+    return {
+      email: normalized,
+      plan: "demo",
+      active: false,
+      source: "none",
+      updatedAt: now,
+    };
+  }
+
+  return {
+    email: normalized,
+    plan: customer.plan,
+    active: Boolean(checkout),
+    source: checkout?.status === "captured" ? "whop" : checkout?.status === "test_mode" ? "local_test" : "none",
+    updatedAt: customer.updatedAt,
+  };
 }
 
 export async function recordCheckout(record: CheckoutRecord) {

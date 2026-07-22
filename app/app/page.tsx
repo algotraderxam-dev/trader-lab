@@ -24,6 +24,7 @@ const STEPS = ["Describe", "Rules", "Risk gates", "Test plan", "Automation"];
 const MODULES = ["Overview", "Strategy", "Backtest", "Monte Carlo", "Blueprint", "Report"] as const;
 type Module = (typeof MODULES)[number];
 type Plan = "demo" | "research" | "pro";
+type AccessState = "checking" | "demo" | "active" | "locked";
 type SavedProject = {
   id: string;
   email?: string;
@@ -51,7 +52,7 @@ const ANALYZE_LINES = [
 ];
 
 export default function App() {
-  const [module, setModule] = useState<Module>("Strategy");
+  const [module, setModule] = useState<Module>("Overview");
   const [step, setStep] = useState(0);
   const [text, setText] = useState("");
   const [analyzing, setAnalyzing] = useState(false);
@@ -67,6 +68,8 @@ export default function App() {
   const [tradeLogError, setTradeLogError] = useState("");
   const [notice, setNotice] = useState("");
   const [serverState, setServerState] = useState<"syncing" | "online" | "local">("syncing");
+  const [accessState, setAccessState] = useState<AccessState>("checking");
+  const [accessSource, setAccessSource] = useState("checking");
 
   useEffect(() => {
     const requested = new URLSearchParams(window.location.search).get("module");
@@ -89,6 +92,20 @@ export default function App() {
         setProjects([]);
       }
     }
+
+    fetch(`/api/access?email=${encodeURIComponent(storedEmail)}`)
+      .then((response) => response.json())
+      .then((payload) => {
+        if (payload.access?.plan === "research" || payload.access?.plan === "pro" || payload.access?.plan === "demo") {
+          setPlan(payload.access.plan);
+        }
+        setAccessSource(payload.access?.source || "none");
+        setAccessState(payload.access?.active ? (payload.access.source === "demo" ? "demo" : "active") : "locked");
+      })
+      .catch(() => {
+        setAccessState(storedEmail === "demo@quantpilot.local" ? "demo" : "locked");
+        setAccessSource("local");
+      });
 
     fetch(`/api/projects?email=${encodeURIComponent(storedEmail)}`)
       .then((response) => response.json())
@@ -285,6 +302,15 @@ export default function App() {
           </div>
           <div className="hidden items-center gap-3 sm:flex">
             {notice && <span className="text-xs text-accent">{notice}</span>}
+            <span className={`rounded-full border px-2.5 py-1 text-xs ${
+              accessState === "active"
+                ? "border-pos/40 text-pos"
+                : accessState === "checking"
+                  ? "border-warn/40 text-warn"
+                  : "border-edge-bright text-faint"
+            }`}>
+              {accessState === "active" ? "Access active" : accessState === "checking" ? "Checking" : accessState === "demo" ? "Demo access" : "Access needed"}
+            </span>
             <span className="rounded-full border border-edge-bright px-2.5 py-1 text-xs text-dim">
               {plan === "demo" ? "Demo" : plan === "research" ? "Research" : "Pro"}
             </span>
@@ -339,7 +365,14 @@ export default function App() {
           onSave={saveProject}
           onLoad={loadProject}
           onSeed={seedDemoProjects}
+          accessState={accessState}
+          accessSource={accessSource}
         />
+        {accessState === "locked" && (
+          <AccessRequired email={email} />
+        )}
+        {accessState !== "locked" && (
+        <>
         {module === "Overview" && (
           <WorkspaceOverview
             projects={projects}
@@ -375,6 +408,8 @@ export default function App() {
         {module === "Strategy" && step === 2 && <StepRisk analysis={activeAnalysis} onNext={next} />}
         {module === "Strategy" && step === 3 && <StepBacktest analysis={activeAnalysis} onNext={next} />}
         {module === "Strategy" && step === 4 && <StepBlueprint analysis={activeAnalysis} />}
+        </>
+        )}
       </div>
 
       <footer className="mx-auto max-w-5xl px-5 pb-10">
@@ -651,6 +686,8 @@ function WorkspaceStatus({
   email,
   projects,
   serverState,
+  accessState,
+  accessSource,
   activeAnalysis,
   onSave,
   onLoad,
@@ -660,6 +697,8 @@ function WorkspaceStatus({
   email: string;
   projects: SavedProject[];
   serverState: "syncing" | "online" | "local";
+  accessState: AccessState;
+  accessSource: string;
   activeAnalysis: StrategyAnalysis | null;
   onSave: () => void;
   onLoad: (project: SavedProject) => void;
@@ -679,6 +718,18 @@ function WorkspaceStatus({
           </span>
         </div>
         <p className="mt-3 text-xs text-faint">{limit}</p>
+        <div className="mt-3 rounded-md border border-edge bg-raised px-3 py-2">
+          <p className="text-[11px] text-faint">Access</p>
+          <p className="mt-1 text-xs text-dim">
+            {accessState === "active"
+              ? `Active via ${accessSource}`
+              : accessState === "demo"
+                ? "Demo workspace"
+                : accessState === "checking"
+                  ? "Checking backend access"
+                  : "Activation required"}
+          </p>
+        </div>
         <button
           onClick={onSave}
           className="mt-4 w-full rounded-md border border-edge-bright px-4 py-2 text-sm text-dim transition hover:border-accent/50 hover:text-ink"
@@ -740,6 +791,50 @@ function WorkspaceStatus({
         </div>
       </div>
     </section>
+  );
+}
+
+function AccessRequired({ email }: { email: string }) {
+  return (
+    <section className="fade-up overflow-hidden rounded-xl border border-warn/30 bg-panel">
+      <div className="grid gap-px bg-edge lg:grid-cols-[1fr_0.9fr]">
+        <div className="bg-panel p-6">
+          <p className="text-xs text-warn">Access required</p>
+          <h1 className="mt-3 text-2xl font-semibold">Activate QuantPilot to open this workspace.</h1>
+          <p className="mt-3 max-w-xl text-sm leading-relaxed text-dim">
+            This email is not linked to an active checkout yet: <span className="text-ink">{email}</span>.
+            Use Research for validation and reports, or Pro for unlimited validations plus Pine/webhook exports.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-3">
+            <Link href="/checkout?plan=research" className="rounded-md border border-edge-bright px-4 py-2.5 text-sm text-dim transition hover:text-ink">
+              Research $79
+            </Link>
+            <Link href="/checkout?plan=pro" className="rounded-md bg-ink px-4 py-2.5 text-sm font-medium text-black transition hover:opacity-85">
+              Pro $199
+            </Link>
+          </div>
+        </div>
+        <div className="bg-panel p-6">
+          <p className="text-xs text-faint">What unlocks</p>
+          <div className="mt-4 space-y-2 text-sm text-dim">
+            <AccessLine label="Strategy validation" />
+            <AccessLine label="Trade-log parsing" />
+            <AccessLine label="Monte Carlo + prop-firm odds" />
+            <AccessLine label="Shareable reports" />
+            <AccessLine label="Pine and webhook blueprint" />
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function AccessLine({ label }: { label: string }) {
+  return (
+    <div className="flex items-center gap-2 rounded-md border border-edge bg-raised px-3 py-2">
+      <span className="h-1.5 w-1.5 rounded-full bg-accent" />
+      <span>{label}</span>
+    </div>
   );
 }
 

@@ -92,3 +92,11 @@ export type CheckoutRecord = {
   amount: number;
   createdAt: string;
 };
+
+export type CustomerAccess = {
+  email: string;
+  plan: Plan;
+  active: boolean;
+  source: "demo" | "local_test" | "whop" | "none";
+  updatedAt: string;
+};
