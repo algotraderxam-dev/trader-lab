@@ -1,11 +1,15 @@
 import { NextResponse } from "next/server";
+import { rateLimit } from "@/lib/server/security";
 import { getProject } from "@/lib/server/store";
 
 type Context = {
   params: Promise<{ id: string }>;
 };
 
-export async function GET(_request: Request, context: Context) {
+export async function GET(request: Request, context: Context) {
+  const limited = rateLimit(request, "reports:get", { limit: 120, windowMs: 60_000 });
+  if (limited) return limited;
+
   const { id } = await context.params;
   const project = await getProject(id);
 
@@ -17,7 +21,6 @@ export async function GET(_request: Request, context: Context) {
     report: {
       projectId: project.id,
       name: project.name,
-      email: project.email,
       score: project.score,
       status: project.status,
       generatedAt: new Date().toISOString(),
