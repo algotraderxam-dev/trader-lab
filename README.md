@@ -105,7 +105,9 @@ WHOP_WEBHOOK_SECRET=
 ```
 
 When a product ID exists, `/api/checkout` returns a Whop checkout URL. Without IDs,
-it keeps local test activation for development.
+checkout access is blocked unless `QUANTPILOT_ALLOW_TEST_ACCESS=1` is set for
+local development. Production access must be granted by the verified Whop
+webhook, not by the checkout route.
 
 Whop webhook setup:
 

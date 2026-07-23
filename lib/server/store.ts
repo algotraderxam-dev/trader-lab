@@ -112,11 +112,15 @@ export async function getAccessForEmail(email: string): Promise<CustomerAccess> 
     };
   }
 
+  const testAccessAllowed = process.env.QUANTPILOT_ALLOW_TEST_ACCESS === "1";
+  const checkoutIsCaptured = checkout?.status === "captured";
+  const checkoutIsAllowedTest = testAccessAllowed && checkout?.status === "test_mode";
+
   return {
     email: normalized,
     plan: customer.plan,
-    active: Boolean(checkout),
-    source: checkout?.status === "captured" ? "whop" : checkout?.status === "test_mode" ? "local_test" : "none",
+    active: Boolean(checkoutIsCaptured || checkoutIsAllowedTest),
+    source: checkoutIsCaptured ? "whop" : checkoutIsAllowedTest ? "local_test" : "none",
     updatedAt: customer.updatedAt,
   };
 }
