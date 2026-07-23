@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 
 export function proxy(_request: NextRequest) {
   const response = NextResponse.next();
+  const supabaseOrigin = supabaseConnectOrigin();
 
   response.headers.set("X-Content-Type-Options", "nosniff");
   response.headers.set("X-Frame-Options", "DENY");
@@ -16,7 +17,7 @@ export function proxy(_request: NextRequest) {
       "style-src 'self' 'unsafe-inline'",
       "img-src 'self' data: blob:",
       "font-src 'self' data:",
-      "connect-src 'self'",
+      `connect-src 'self'${supabaseOrigin ? ` ${supabaseOrigin}` : ""}`,
       "frame-ancestors 'none'",
       "base-uri 'self'",
       "form-action 'self'",
@@ -24,4 +25,15 @@ export function proxy(_request: NextRequest) {
   );
 
   return response;
+}
+
+function supabaseConnectOrigin() {
+  const rawUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  if (!rawUrl) return "";
+
+  try {
+    return new URL(rawUrl).origin;
+  } catch {
+    return "";
+  }
 }
