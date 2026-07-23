@@ -38,7 +38,9 @@ export function rateLimit(
 
 export function assertSameOrigin(request: Request) {
   const origin = request.headers.get("origin");
-  if (!origin) return null;
+  if (!origin) {
+    return NextResponse.json({ error: "Missing request origin." }, { status: 403 });
+  }
 
   const host = request.headers.get("host");
   try {

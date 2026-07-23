@@ -13,7 +13,6 @@ type ProjectSummary = {
 type ReportPayload = {
   projectId: string;
   name: string;
-  email: string;
   score: number;
   status: string;
   generatedAt: string;
@@ -50,9 +49,12 @@ export function ShareableReport() {
   const [error, setError] = useState("");
 
   useEffect(() => {
-    const email = localStorage.getItem("quantpilot_email") || localStorage.getItem("axiomedge_email") || localStorage.getItem("traderlab_email") || localStorage.getItem("stratlab_email") || "demo@quantpilot.local";
-    fetch(`/api/projects?email=${encodeURIComponent(email)}`)
-      .then((response) => response.json())
+    fetch("/api/projects")
+      .then((response) => {
+        if (response.status === 401) throw new Error("Sign in required to load saved projects.");
+        if (!response.ok) throw new Error("Could not load saved projects.");
+        return response.json();
+      })
       .then((payload) => {
         const list = Array.isArray(payload.projects) ? payload.projects : [];
         setProjects(list);

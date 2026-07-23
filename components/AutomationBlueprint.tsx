@@ -30,8 +30,6 @@ type BlueprintReport = {
 
 type ReportResponse = BlueprintReport | { report: BlueprintReport };
 
-const FALLBACK_EMAIL = "demo@quantpilot.local";
-
 export function AutomationBlueprint() {
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [selectedId, setSelectedId] = useState("");
@@ -42,15 +40,9 @@ export function AutomationBlueprint() {
   const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => {
-    const email =
-      window.localStorage.getItem("quantpilot_email") ||
-      window.localStorage.getItem("axiomedge_email") ||
-      window.localStorage.getItem("traderlab_email") ||
-      window.localStorage.getItem("stratlab_email") ||
-      FALLBACK_EMAIL;
-
-    fetch(`/api/projects?email=${encodeURIComponent(email)}`)
+    fetch("/api/projects")
       .then((res) => {
+        if (res.status === 401) throw new Error("Sign in required to load saved projects.");
         if (!res.ok) throw new Error("Could not load saved projects.");
         return res.json();
       })

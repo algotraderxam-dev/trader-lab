@@ -24,7 +24,7 @@ const STEPS = ["Describe", "Rules", "Risk gates", "Test plan", "Automation"];
 const MODULES = ["Overview", "Strategy", "Backtest", "Monte Carlo", "Blueprint", "Report"] as const;
 type Module = (typeof MODULES)[number];
 type Plan = "demo" | "research" | "pro";
-type AccessState = "checking" | "demo" | "active" | "locked";
+type AccessState = "checking" | "active" | "locked" | "signed_out";
 type SavedProject = {
   id: string;
   email?: string;
@@ -80,45 +80,55 @@ export default function App() {
     if (requested === "blueprint") setModule("Blueprint");
     if (requested === "report") setModule("Report");
 
-    const savedPlan = localStorage.getItem("quantpilot_plan") || localStorage.getItem("axiomedge_plan") || localStorage.getItem("traderlab_plan") || localStorage.getItem("stratlab_plan");
+    const savedPlan = localStorage.getItem("quantpilot_plan");
     if (savedPlan === "research" || savedPlan === "pro") setPlan(savedPlan);
-    const storedEmail = localStorage.getItem("quantpilot_email") || localStorage.getItem("axiomedge_email") || localStorage.getItem("traderlab_email") || localStorage.getItem("stratlab_email") || "demo@quantpilot.local";
-    setEmail(storedEmail);
-    const rawProjects = localStorage.getItem("quantpilot_projects") || localStorage.getItem("axiomedge_projects") || localStorage.getItem("traderlab_projects") || localStorage.getItem("stratlab_projects");
-    if (rawProjects) {
-      try {
-        setProjects(JSON.parse(rawProjects));
-      } catch {
-        setProjects([]);
-      }
-    }
 
-    fetch(`/api/access?email=${encodeURIComponent(storedEmail)}`)
+    fetch("/api/auth/session")
       .then((response) => response.json())
       .then((payload) => {
+        if (!payload.user?.email) {
+          setAccessState("signed_out");
+          setAccessSource(payload.configured ? "signed_out" : "auth_not_configured");
+          return null;
+        }
+        setEmail(payload.user.email);
+        return fetch("/api/access");
+      })
+      .then((response) => {
+        if (!response) return null;
+        if (response.status === 401) {
+          setAccessState("signed_out");
+          return null;
+        }
+        return response.json();
+      })
+      .then((payload) => {
+        if (!payload) return;
         if (payload.access?.plan === "research" || payload.access?.plan === "pro" || payload.access?.plan === "demo") {
           setPlan(payload.access.plan);
         }
         setAccessSource(payload.access?.source || "none");
-        setAccessState(payload.access?.active ? (payload.access.source === "demo" ? "demo" : "active") : "locked");
+        setAccessState(payload.access?.active ? "active" : "locked");
+        if (payload.access?.active) {
+          fetch("/api/projects")
+            .then((response) => {
+              if (!response.ok) throw new Error("Could not load projects.");
+              return response.json();
+            })
+            .then((projectsPayload) => {
+              if (Array.isArray(projectsPayload.projects)) {
+                setProjects(projectsPayload.projects);
+                setSelectedProjectId((current) => current || projectsPayload.projects[0]?.id || "");
+              }
+              setServerState("online");
+            })
+            .catch(() => setServerState("local"));
+        }
       })
       .catch(() => {
-        setAccessState(storedEmail === "demo@quantpilot.local" ? "demo" : "locked");
+        setAccessState("signed_out");
         setAccessSource("local");
       });
-
-    fetch(`/api/projects?email=${encodeURIComponent(storedEmail)}`)
-      .then((response) => response.json())
-      .then((payload) => {
-        if (Array.isArray(payload.projects)) {
-          setProjects(payload.projects);
-          setSelectedProjectId((current) => current || payload.projects[0]?.id || "");
-          localStorage.setItem("quantpilot_projects", JSON.stringify(payload.projects));
-          localStorage.setItem("traderlab_projects", JSON.stringify(payload.projects));
-        }
-        setServerState("online");
-      })
-      .catch(() => setServerState("local"));
   }, []);
 
   useEffect(() => {
@@ -162,7 +172,7 @@ export default function App() {
       const response = await fetch("/api/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ text: body, email, plan, csv: tradeLog?.csv }),
+        body: JSON.stringify({ text: body, csv: tradeLog?.csv }),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Project save failed");
@@ -173,8 +183,6 @@ export default function App() {
       setProjects(nextProjects);
       setSelectedProjectId(payload.project.id);
       setActiveAnalysis(payload.project.analysis);
-      localStorage.setItem("quantpilot_projects", JSON.stringify(nextProjects));
-      localStorage.setItem("traderlab_projects", JSON.stringify(nextProjects));
       setServerState("online");
       setNotice("Project saved to backend");
     } catch {
@@ -189,8 +197,6 @@ export default function App() {
       const nextProjects = [fallback, ...projects].slice(0, plan === "demo" ? 2 : plan === "research" ? 20 : 100);
       setProjects(nextProjects);
       setSelectedProjectId(fallback.id);
-      localStorage.setItem("quantpilot_projects", JSON.stringify(nextProjects));
-      localStorage.setItem("traderlab_projects", JSON.stringify(nextProjects));
       setServerState("local");
       setNotice("Project saved locally");
     }
@@ -202,16 +208,14 @@ export default function App() {
       const response = await fetch("/api/demo-projects/seed", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email }),
+        body: JSON.stringify({}),
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Could not seed demo projects");
-      const refreshed = await fetch(`/api/projects?email=${encodeURIComponent(email)}`).then((res) => res.json());
+      const refreshed = await fetch("/api/projects").then((res) => res.json());
       const nextProjects = Array.isArray(refreshed.projects) ? refreshed.projects : [];
       setProjects(nextProjects);
       setSelectedProjectId(nextProjects[0]?.id || "");
-      localStorage.setItem("quantpilot_projects", JSON.stringify(nextProjects));
-      localStorage.setItem("traderlab_projects", JSON.stringify(nextProjects));
       setServerState("online");
       setNotice(`Loaded ${payload.seeded || nextProjects.length} demo projects`);
     } catch {
@@ -309,16 +313,14 @@ export default function App() {
                   ? "border-warn/40 text-warn"
                   : "border-edge-bright text-faint"
             }`}>
-              {accessState === "active" ? "Access active" : accessState === "checking" ? "Checking" : accessState === "demo" ? "Demo access" : "Access needed"}
+              {accessState === "active" ? "Access active" : accessState === "checking" ? "Checking" : accessState === "signed_out" ? "Sign in" : "Access needed"}
             </span>
             <span className="rounded-full border border-edge-bright px-2.5 py-1 text-xs text-dim">
               {plan === "demo" ? "Demo" : plan === "research" ? "Research" : "Pro"}
             </span>
-            {plan === "demo" && (
-              <Link href="/checkout?plan=pro" className="rounded-md bg-ink px-3 py-1.5 text-xs font-medium text-black">
-                Upgrade
-              </Link>
-            )}
+            <Link href={accessState === "signed_out" ? "/login" : "/checkout?plan=pro"} className="rounded-md bg-ink px-3 py-1.5 text-xs font-medium text-black">
+              {accessState === "signed_out" ? "Sign in" : "Upgrade"}
+            </Link>
           </div>
         </div>
       </header>
@@ -368,10 +370,10 @@ export default function App() {
           accessState={accessState}
           accessSource={accessSource}
         />
-        {accessState === "locked" && (
+        {(accessState === "locked" || accessState === "signed_out") && (
           <AccessRequired email={email} />
         )}
-        {accessState !== "locked" && (
+        {accessState !== "locked" && accessState !== "signed_out" && (
         <>
         {module === "Overview" && (
           <WorkspaceOverview
@@ -705,6 +707,8 @@ function WorkspaceStatus({
   onSeed: () => void;
 }) {
   const limit = plan === "demo" ? "2 saved projects" : plan === "research" ? "20 validations / month" : "Unlimited workspace";
+  const canUseWorkspace = accessState === "active";
+
   return (
     <section className="mb-8 grid gap-px overflow-hidden rounded-xl border border-edge bg-edge lg:grid-cols-[1fr_1.4fr_0.9fr]">
       <div className="bg-panel p-4">
@@ -723,22 +727,24 @@ function WorkspaceStatus({
           <p className="mt-1 text-xs text-dim">
             {accessState === "active"
               ? `Active via ${accessSource}`
-              : accessState === "demo"
-                ? "Demo workspace"
-                : accessState === "checking"
+              : accessState === "checking"
                   ? "Checking backend access"
-                  : "Activation required"}
+                  : accessState === "signed_out"
+                    ? "Signed session required"
+                    : "Activation required"}
           </p>
         </div>
         <button
           onClick={onSave}
-          className="mt-4 w-full rounded-md border border-edge-bright px-4 py-2 text-sm text-dim transition hover:border-accent/50 hover:text-ink"
+          disabled={!canUseWorkspace}
+          className="mt-4 w-full rounded-md border border-edge-bright px-4 py-2 text-sm text-dim transition hover:border-accent/50 hover:text-ink disabled:cursor-not-allowed disabled:border-edge disabled:text-faint"
         >
           Save current strategy
         </button>
         <button
           onClick={onSeed}
-          className="mt-2 w-full rounded-md border border-accent/35 px-4 py-2 text-sm text-accent transition hover:bg-accent/10"
+          disabled={!canUseWorkspace}
+          className="mt-2 w-full rounded-md border border-accent/35 px-4 py-2 text-sm text-accent transition hover:bg-accent/10 disabled:cursor-not-allowed disabled:border-edge disabled:text-faint"
         >
           Load demo workspace
         </button>
@@ -795,23 +801,41 @@ function WorkspaceStatus({
 }
 
 function AccessRequired({ email }: { email: string }) {
+  const signedOut = !email;
+
   return (
     <section className="fade-up overflow-hidden rounded-xl border border-warn/30 bg-panel">
       <div className="grid gap-px bg-edge lg:grid-cols-[1fr_0.9fr]">
         <div className="bg-panel p-6">
-          <p className="text-xs text-warn">Access required</p>
-          <h1 className="mt-3 text-2xl font-semibold">Activate QuantPilot to open this workspace.</h1>
+          <p className="text-xs text-warn">{signedOut ? "Sign in required" : "Access required"}</p>
+          <h1 className="mt-3 text-2xl font-semibold">
+            {signedOut ? "Sign in to open this workspace." : "Activate QuantPilot to open this workspace."}
+          </h1>
           <p className="mt-3 max-w-xl text-sm leading-relaxed text-dim">
-            This email is not linked to an active checkout yet: <span className="text-ink">{email}</span>.
-            Use Research for validation and reports, or Pro for unlimited validations plus Pine/webhook exports.
+            {signedOut ? (
+              "Saved strategies, reports, and automation blueprints are now protected by a signed Supabase session."
+            ) : (
+              <>
+                This email is not linked to an active checkout yet: <span className="text-ink">{email}</span>.
+                Use Research for validation and reports, or Pro for unlimited validations plus Pine/webhook exports.
+              </>
+            )}
           </p>
           <div className="mt-5 flex flex-wrap gap-3">
-            <Link href="/checkout?plan=research" className="rounded-md border border-edge-bright px-4 py-2.5 text-sm text-dim transition hover:text-ink">
-              Research $79
-            </Link>
-            <Link href="/checkout?plan=pro" className="rounded-md bg-ink px-4 py-2.5 text-sm font-medium text-black transition hover:opacity-85">
-              Pro $199
-            </Link>
+            {signedOut ? (
+              <Link href="/login" className="rounded-md bg-ink px-4 py-2.5 text-sm font-medium text-black transition hover:opacity-85">
+                Send magic link
+              </Link>
+            ) : (
+              <>
+                <Link href="/checkout?plan=research" className="rounded-md border border-edge-bright px-4 py-2.5 text-sm text-dim transition hover:text-ink">
+                  Research $79
+                </Link>
+                <Link href="/checkout?plan=pro" className="rounded-md bg-ink px-4 py-2.5 text-sm font-medium text-black transition hover:opacity-85">
+                  Pro $199
+                </Link>
+              </>
+            )}
           </div>
         </div>
         <div className="bg-panel p-6">

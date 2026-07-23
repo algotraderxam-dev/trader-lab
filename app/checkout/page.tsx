@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
+import { createAuthBrowserClient, isBrowserAuthConfigured } from "@/lib/supabase/client";
 
 const PLANS = {
   research: {
@@ -57,11 +58,19 @@ export default function CheckoutPage() {
       });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Checkout failed.");
+
+      if (isBrowserAuthConfigured()) {
+        const supabase = createAuthBrowserClient();
+        await supabase.auth.signInWithOtp({
+          email: email.trim().toLowerCase(),
+          options: {
+            emailRedirectTo: `${window.location.origin}/auth/callback?next=/app`,
+          },
+        }).catch(() => null);
+      }
+
       localStorage.setItem("quantpilot_plan", selected);
-      localStorage.setItem("quantpilot_email", email);
       localStorage.setItem("quantpilot_started_at", new Date().toISOString());
-      localStorage.setItem("traderlab_plan", selected);
-      localStorage.setItem("traderlab_email", email);
       window.location.href = payload.nextUrl || "/app?module=strategy&activated=1";
     } catch (err) {
       setError(err instanceof Error ? err.message : "Checkout failed.");
@@ -85,8 +94,8 @@ export default function CheckoutPage() {
             Start QuantPilot {plan.name}.
           </h1>
           <p className="mt-4 max-w-xl text-dim">
-            This MVP checkout activates the selected plan locally. Add Whop product
-            IDs when your payment links are ready.
+            Checkout starts Whop access and sends a Supabase magic link so the
+            workspace opens under a signed session.
           </p>
 
           <div className="mt-8 grid gap-px overflow-hidden rounded-xl border border-edge bg-edge sm:grid-cols-2">
@@ -143,8 +152,8 @@ export default function CheckoutPage() {
             </button>
             {error && <p className="mt-3 text-xs text-danger">{error}</p>}
             <p className="mt-3 text-xs leading-relaxed text-faint">
-              MVP mode: this records a test checkout on the backend. Whop plugs into
-              the same route when product IDs are configured.
+              In production, Whop confirms access by webhook. The magic link protects
+              the workspace session after checkout.
             </p>
           </div>
         </aside>

@@ -5,6 +5,7 @@ import {
   readJsonLimited,
   requireActiveAccess,
 } from "@/lib/server/security";
+import { getSessionEmail } from "@/lib/server/auth";
 import { analyzeStrategy } from "@/lib/traderlab/engine";
 import { deleteProject, getProject, saveProject } from "@/lib/server/store";
 
@@ -17,8 +18,11 @@ export async function GET(request: Request, context: Context) {
   if (limited) return limited;
 
   const { id } = await context.params;
-  const { searchParams } = new URL(request.url);
-  const email = searchParams.get("email")?.trim().toLowerCase() || "";
+  const email = await getSessionEmail();
+  if (!email) {
+    return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  }
+
   const project = await getProject(id);
 
   if (!project) {
@@ -46,12 +50,15 @@ export async function PATCH(request: Request, context: Context) {
   const project = await getProject(id);
   const { body, error } = await readJsonLimited<Record<string, unknown>>(request, 350_000);
   if (error) return error;
+  const email = await getSessionEmail();
+  if (!email) {
+    return NextResponse.json({ error: "Sign in required." }, { status: 401 });
+  }
 
   if (!project) {
     return NextResponse.json({ error: "Project not found." }, { status: 404 });
   }
 
-  const email = typeof body?.email === "string" ? body.email.trim().toLowerCase() : "";
   if (email !== project.email) {
     return NextResponse.json({ error: "Project access denied." }, { status: 403 });
   }
@@ -82,11 +89,9 @@ export async function DELETE(request: Request, context: Context) {
   if (limited) return limited;
 
   const { id } = await context.params;
-  const { searchParams } = new URL(request.url);
-  const email = searchParams.get("email")?.trim().toLowerCase() || "";
-
+  const email = await getSessionEmail();
   if (!email) {
-    return NextResponse.json({ error: "Email is required." }, { status: 400 });
+    return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   }
 
   const accessCheck = await requireActiveAccess(email);
