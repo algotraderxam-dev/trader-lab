@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { assertSameOrigin, rateLimit, readJsonLimited } from "@/lib/server/security";
+import { MAX_MONTE_CARLO_POINTS } from "@/lib/traderlab/limits";
 import { sampleMonteCarloPaths, runBothMonteCarlo } from "@/lib/traderlab/monteCarlo";
 import { FIRM_PRESETS, simulateChallenge, solvePositionSize } from "@/lib/traderlab/propFirm";
 
@@ -18,6 +19,13 @@ export async function POST(request: Request) {
   const firmId = typeof body?.firm === "string" ? body.firm : "topstep_50k";
   const firm = FIRM_PRESETS[firmId] || FIRM_PRESETS.topstep_50k;
   const ruinThreshold = typeof body?.ruinThreshold === "number" ? body.ruinThreshold : firm.maxDrawdown;
+
+  if (pnl.length > MAX_MONTE_CARLO_POINTS || dailyPnl.length > MAX_MONTE_CARLO_POINTS) {
+    return NextResponse.json(
+      { error: `Monte Carlo inputs are capped at ${MAX_MONTE_CARLO_POINTS} points.` },
+      { status: 400 },
+    );
+  }
 
   if (pnl.length < 2) {
     return NextResponse.json({ error: "pnl must contain at least 2 trade results." }, { status: 400 });

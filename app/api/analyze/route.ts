@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { assertSameOrigin, rateLimit, readJsonLimited } from "@/lib/server/security";
 import { analyzeStrategy } from "@/lib/traderlab/engine";
+import { MAX_API_TRADES } from "@/lib/traderlab/limits";
 import type { Trade } from "@/lib/traderlab/metrics";
 import { parseTradeCsv } from "@/lib/traderlab/tradeLog";
 
@@ -31,6 +32,10 @@ export async function POST(request: Request) {
       { error: error instanceof Error ? error.message : "Could not parse trade log." },
       { status: 400 },
     );
+  }
+
+  if (Array.isArray(body?.trades) && body.trades.length > MAX_API_TRADES) {
+    return NextResponse.json({ error: `Trades array capped at ${MAX_API_TRADES} rows.` }, { status: 400 });
   }
 
   const trades = Array.isArray(body?.trades) ? normalizeTrades(body.trades) : parsed?.trades;

@@ -36,7 +36,14 @@ const EMPTY_DB: Database = {
   projects: [],
 };
 
+function assertDevJsonStoreAllowed() {
+  if (process.env.NODE_ENV === "production" && !isSupabaseConfigured()) {
+    throw new Error("Supabase must be configured in production; JSON store is dev-only.");
+  }
+}
+
 export async function readDb(): Promise<Database> {
+  assertDevJsonStoreAllowed();
   await mkdir(DATA_DIR, { recursive: true });
   try {
     const raw = await readFile(DB_PATH, "utf8");
@@ -48,6 +55,7 @@ export async function readDb(): Promise<Database> {
 }
 
 export async function writeDb(db: Database) {
+  assertDevJsonStoreAllowed();
   await mkdir(DATA_DIR, { recursive: true });
   await writeFile(DB_PATH, `${JSON.stringify(db, null, 2)}\n`, "utf8");
 }

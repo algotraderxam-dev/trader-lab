@@ -1,4 +1,5 @@
 import type { Trade } from "./metrics";
+import { MAX_TRADE_ROWS } from "./limits";
 
 type ParseResult = {
   trades: Trade[];
@@ -15,6 +16,10 @@ export function parseTradeCsv(csv: string): ParseResult {
   const rows = parseCsvRows(csv);
   if (rows.length < 2) {
     throw new Error("CSV needs a header row and at least one trade row.");
+  }
+
+  if (rows.length - 1 > MAX_TRADE_ROWS) {
+    throw new Error(`Trade log capped at ${MAX_TRADE_ROWS} rows.`);
   }
 
   const headers = rows[0].map((header) => normalize(header));
@@ -114,8 +119,11 @@ function normalize(value: string) {
 
 function money(value: string | undefined) {
   if (!value) return null;
-  const parsed = Number(value.replace(/[$,%\s]/g, "").replace(/[()]/g, "-"));
-  return Number.isFinite(parsed) ? parsed : null;
+  const trimmed = value.trim();
+  const negative = /^\(.*\)$/.test(trimmed);
+  const parsed = Number(trimmed.replace(/[$,%\s()]/g, ""));
+  if (!Number.isFinite(parsed)) return null;
+  return negative ? -Math.abs(parsed) : parsed;
 }
 
 function number(value: string | undefined) {

@@ -80,6 +80,8 @@ MCP tools:
 
 - Security headers are applied through `proxy.ts`: content-type sniffing blocked, framing denied, referrer policy set, browser permissions restricted, and a same-origin CSP enabled.
 - Mutating API routes enforce same-origin browser requests, request body size limits, and per-IP in-memory rate limits.
+- Production refuses to use the local JSON store; Supabase env vars are required outside development.
+- Trade-log and simulation inputs are capped to reduce CPU abuse while the MVP uses in-process simulation.
 - Project list, save, update, delete, and demo seeding require active QuantPilot access from `/api/access`.
 - Project updates require the submitted email to match the saved project owner.
 - Shareable report routes are intentionally public because report links are part of the sales workflow.
