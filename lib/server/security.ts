@@ -73,8 +73,8 @@ export async function readJsonLimited<T = unknown>(request: Request, maxBytes = 
   }
 }
 
-export async function requireActiveAccess(email: string) {
-  const access = await getAccessForEmail(email);
+export async function requireActiveAccess(email: string, accessToken?: string) {
+  const access = await getAccessForEmail(email, accessToken);
   if (access.active) return { access, error: null };
 
   return {

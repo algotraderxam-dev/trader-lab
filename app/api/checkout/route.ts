@@ -30,7 +30,6 @@ export async function POST(request: Request) {
 
   const whopUrl = whopCheckoutUrl(plan, email);
   if (whopUrl) {
-    await upsertCustomer(email, plan);
     return NextResponse.json({
       checkout: null,
       provider: "whop",

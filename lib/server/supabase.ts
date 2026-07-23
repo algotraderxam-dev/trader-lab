@@ -31,6 +31,7 @@ type ProjectRow = {
 
 const SUPABASE_URL = process.env.SUPABASE_URL?.replace(/\/$/, "");
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const SUPABASE_ANON_KEY = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
 export function isSupabaseConfigured() {
   return Boolean(SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY);
@@ -59,8 +60,24 @@ export async function supabaseGetCustomer(email: string) {
   return row ? fromCustomerRow(row) : null;
 }
 
+export async function supabaseGetCustomerForUser(email: string, accessToken: string) {
+  const [row] = await supabaseUserRequest<CustomerRow[]>(
+    accessToken,
+    `/customers?email=eq.${encodeURIComponent(email)}&select=*`,
+  );
+  return row ? fromCustomerRow(row) : null;
+}
+
 export async function supabaseGetLatestCheckout(email: string) {
   const [row] = await supabaseRequest<CheckoutRow[]>(
+    `/checkouts?email=eq.${encodeURIComponent(email)}&select=*&order=created_at.desc&limit=1`,
+  );
+  return row ? fromCheckoutRow(row) : null;
+}
+
+export async function supabaseGetLatestCheckoutForUser(email: string, accessToken: string) {
+  const [row] = await supabaseUserRequest<CheckoutRow[]>(
+    accessToken,
     `/checkouts?email=eq.${encodeURIComponent(email)}&select=*&order=created_at.desc&limit=1`,
   );
   return row ? fromCheckoutRow(row) : null;
@@ -85,8 +102,24 @@ export async function supabaseListProjects(email: string) {
   return rows.map(fromProjectRow);
 }
 
+export async function supabaseListProjectsForUser(email: string, accessToken: string) {
+  const rows = await supabaseUserRequest<ProjectRow[]>(
+    accessToken,
+    `/projects?email=eq.${encodeURIComponent(email)}&select=*&order=updated_at.desc`,
+  );
+  return rows.map(fromProjectRow);
+}
+
 export async function supabaseGetProject(id: string) {
   const [row] = await supabaseRequest<ProjectRow[]>(
+    `/projects?id=eq.${encodeURIComponent(id)}&select=*&limit=1`,
+  );
+  return row ? fromProjectRow(row) : null;
+}
+
+export async function supabaseGetProjectForUser(id: string, accessToken: string) {
+  const [row] = await supabaseUserRequest<ProjectRow[]>(
+    accessToken,
     `/projects?id=eq.${encodeURIComponent(id)}&select=*&limit=1`,
   );
   return row ? fromProjectRow(row) : null;
@@ -104,8 +137,33 @@ export async function supabaseSaveProject(project: StrategyProject) {
   return fromProjectRow(row);
 }
 
+export async function supabaseSaveProjectForUser(project: StrategyProject, accessToken: string) {
+  const [row] = await supabaseUserRequest<ProjectRow[]>(
+    accessToken,
+    `/projects?on_conflict=id`,
+    {
+      method: "POST",
+      body: JSON.stringify([toProjectRow(project)]),
+      headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    },
+  );
+  return fromProjectRow(row);
+}
+
 export async function supabaseDeleteProject(id: string, email: string) {
   const rows = await supabaseRequest<ProjectRow[]>(
+    `/projects?id=eq.${encodeURIComponent(id)}&email=eq.${encodeURIComponent(email)}`,
+    {
+      method: "DELETE",
+      headers: { Prefer: "return=representation" },
+    },
+  );
+  return rows.length > 0;
+}
+
+export async function supabaseDeleteProjectForUser(id: string, email: string, accessToken: string) {
+  const rows = await supabaseUserRequest<ProjectRow[]>(
+    accessToken,
     `/projects?id=eq.${encodeURIComponent(id)}&email=eq.${encodeURIComponent(email)}`,
     {
       method: "DELETE",
@@ -134,6 +192,35 @@ async function supabaseRequest<T>(path: string, init: RequestInit = {}): Promise
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(`Supabase request failed (${response.status}): ${detail}`);
+  }
+
+  if (response.status === 204) return [] as T;
+  return response.json() as Promise<T>;
+}
+
+async function supabaseUserRequest<T>(
+  accessToken: string,
+  path: string,
+  init: RequestInit = {},
+): Promise<T> {
+  if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+    throw new Error("Supabase Auth is not configured.");
+  }
+
+  const response = await fetch(`${SUPABASE_URL}/rest/v1${path}`, {
+    ...init,
+    headers: {
+      apikey: SUPABASE_ANON_KEY,
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json",
+      ...(init.headers || {}),
+    },
+    cache: "no-store",
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(`Supabase user request failed (${response.status}): ${detail}`);
   }
 
   if (response.status === 204) return [] as T;

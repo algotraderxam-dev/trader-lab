@@ -12,7 +12,16 @@ export async function GET(request: Request) {
 
   if (code) {
     const supabase = await createAuthServerClient();
-    await supabase.auth.exchangeCodeForSession(code);
+    const { error } = await supabase.auth.exchangeCodeForSession(code);
+    if (error) {
+      return NextResponse.redirect(
+        new URL(`/login?error=${encodeURIComponent("magic_link_failed")}`, url.origin),
+      );
+    }
+  } else {
+    return NextResponse.redirect(
+      new URL(`/login?error=${encodeURIComponent("missing_auth_code")}`, url.origin),
+    );
   }
 
   return NextResponse.redirect(new URL(next, url.origin));

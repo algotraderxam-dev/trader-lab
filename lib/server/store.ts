@@ -4,12 +4,18 @@ import {
   isSupabaseConfigured,
   storeBackend,
   supabaseDeleteProject,
+  supabaseDeleteProjectForUser,
   supabaseGetCustomer,
+  supabaseGetCustomerForUser,
   supabaseGetLatestCheckout,
+  supabaseGetLatestCheckoutForUser,
   supabaseGetProject,
+  supabaseGetProjectForUser,
   supabaseListProjects,
+  supabaseListProjectsForUser,
   supabaseRecordCheckout,
   supabaseSaveProject,
+  supabaseSaveProjectForUser,
   supabaseUpsertCustomer,
 } from "@/lib/server/supabase";
 import type { CheckoutRecord, CustomerAccess, Plan, StrategyProject } from "@/lib/traderlab/types";
@@ -87,7 +93,7 @@ export async function getCustomer(email: string) {
   return db.customers.find((customer) => customer.email === email) || null;
 }
 
-export async function getAccessForEmail(email: string): Promise<CustomerAccess> {
+export async function getAccessForEmail(email: string, accessToken?: string): Promise<CustomerAccess> {
   const normalized = email.trim().toLowerCase();
   const now = new Date().toISOString();
 
@@ -104,10 +110,14 @@ export async function getAccessForEmail(email: string): Promise<CustomerAccess> 
   const backendIsSupabase = isSupabaseConfigured();
   const db = backendIsSupabase ? null : await readDb();
   const customer = backendIsSupabase
-    ? await supabaseGetCustomer(normalized)
+    ? accessToken
+      ? await supabaseGetCustomerForUser(normalized, accessToken)
+      : await supabaseGetCustomer(normalized)
     : db!.customers.find((item) => item.email === normalized) || null;
   const checkout = backendIsSupabase
-    ? await supabaseGetLatestCheckout(normalized)
+    ? accessToken
+      ? await supabaseGetLatestCheckoutForUser(normalized, accessToken)
+      : await supabaseGetLatestCheckout(normalized)
     : db!.checkouts.find((item) => item.email === normalized) || null;
 
   if (!customer) {
@@ -144,9 +154,9 @@ export async function recordCheckout(record: CheckoutRecord) {
   return record;
 }
 
-export async function listProjects(email: string) {
+export async function listProjects(email: string, accessToken?: string) {
   if (isSupabaseConfigured()) {
-    return supabaseListProjects(email);
+    return accessToken ? supabaseListProjectsForUser(email, accessToken) : supabaseListProjects(email);
   }
 
   const db = await readDb();
@@ -155,18 +165,18 @@ export async function listProjects(email: string) {
     .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 }
 
-export async function getProject(id: string) {
+export async function getProject(id: string, accessToken?: string) {
   if (isSupabaseConfigured()) {
-    return supabaseGetProject(id);
+    return accessToken ? supabaseGetProjectForUser(id, accessToken) : supabaseGetProject(id);
   }
 
   const db = await readDb();
   return db.projects.find((project) => project.id === id) || null;
 }
 
-export async function saveProject(project: StrategyProject) {
+export async function saveProject(project: StrategyProject, accessToken?: string) {
   if (isSupabaseConfigured()) {
-    return supabaseSaveProject(project);
+    return accessToken ? supabaseSaveProjectForUser(project, accessToken) : supabaseSaveProject(project);
   }
 
   const db = await readDb();
@@ -180,9 +190,11 @@ export async function saveProject(project: StrategyProject) {
   return project;
 }
 
-export async function deleteProject(id: string, email: string) {
+export async function deleteProject(id: string, email: string, accessToken?: string) {
   if (isSupabaseConfigured()) {
-    return supabaseDeleteProject(id, email);
+    return accessToken
+      ? supabaseDeleteProjectForUser(id, email, accessToken)
+      : supabaseDeleteProject(id, email);
   }
 
   const db = await readDb();

@@ -5,7 +5,7 @@ import {
   readJsonLimited,
   requireActiveAccess,
 } from "@/lib/server/security";
-import { getSessionEmail } from "@/lib/server/auth";
+import { getVerifiedSession } from "@/lib/server/auth";
 import { analyzeStrategy } from "@/lib/traderlab/engine";
 import { deleteProject, getProject, saveProject } from "@/lib/server/store";
 
@@ -18,22 +18,22 @@ export async function GET(request: Request, context: Context) {
   if (limited) return limited;
 
   const { id } = await context.params;
-  const email = await getSessionEmail();
-  if (!email) {
+  const session = await getVerifiedSession();
+  if (!session) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   }
 
-  const project = await getProject(id);
+  const project = await getProject(id, session.accessToken);
 
   if (!project) {
     return NextResponse.json({ error: "Project not found." }, { status: 404 });
   }
 
-  if (email !== project.email) {
+  if (session.email !== project.email) {
     return NextResponse.json({ error: "Project access denied." }, { status: 403 });
   }
 
-  const accessCheck = await requireActiveAccess(email);
+  const accessCheck = await requireActiveAccess(session.email, session.accessToken);
   if (accessCheck.error) return accessCheck.error;
 
   return NextResponse.json({ project });
@@ -47,23 +47,24 @@ export async function PATCH(request: Request, context: Context) {
   if (limited) return limited;
 
   const { id } = await context.params;
-  const project = await getProject(id);
-  const { body, error } = await readJsonLimited<Record<string, unknown>>(request, 350_000);
-  if (error) return error;
-  const email = await getSessionEmail();
-  if (!email) {
+  const session = await getVerifiedSession();
+  if (!session) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   }
+
+  const project = await getProject(id, session.accessToken);
+  const { body, error } = await readJsonLimited<Record<string, unknown>>(request, 350_000);
+  if (error) return error;
 
   if (!project) {
     return NextResponse.json({ error: "Project not found." }, { status: 404 });
   }
 
-  if (email !== project.email) {
+  if (session.email !== project.email) {
     return NextResponse.json({ error: "Project access denied." }, { status: 403 });
   }
 
-  const accessCheck = await requireActiveAccess(email);
+  const accessCheck = await requireActiveAccess(session.email, session.accessToken);
   if (accessCheck.error) return accessCheck.error;
 
   const text = typeof body?.text === "string" && body.text.trim() ? body.text.trim() : project.text;
@@ -78,7 +79,7 @@ export async function PATCH(request: Request, context: Context) {
     updatedAt: new Date().toISOString(),
   };
 
-  return NextResponse.json({ project: await saveProject(updated) });
+  return NextResponse.json({ project: await saveProject(updated, session.accessToken) });
 }
 
 export async function DELETE(request: Request, context: Context) {
@@ -89,14 +90,14 @@ export async function DELETE(request: Request, context: Context) {
   if (limited) return limited;
 
   const { id } = await context.params;
-  const email = await getSessionEmail();
-  if (!email) {
+  const session = await getVerifiedSession();
+  if (!session) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   }
 
-  const accessCheck = await requireActiveAccess(email);
+  const accessCheck = await requireActiveAccess(session.email, session.accessToken);
   if (accessCheck.error) return accessCheck.error;
 
-  const deleted = await deleteProject(id, email);
+  const deleted = await deleteProject(id, session.email, session.accessToken);
   return NextResponse.json({ deleted });
 }

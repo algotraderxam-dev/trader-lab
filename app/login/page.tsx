@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { Logo } from "@/components/Logo";
 import { createAuthBrowserClient, isBrowserAuthConfigured } from "@/lib/supabase/client";
@@ -11,6 +11,11 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const isReady = useMemo(() => /\S+@\S+\.\S+/.test(email), [email]);
+
+  useEffect(() => {
+    const reason = new URLSearchParams(window.location.search).get("error");
+    if (reason) setError("The sign-in link could not be verified. Please request a fresh magic link.");
+  }, []);
 
   const sendLink = async () => {
     if (!isReady) return;

@@ -6,7 +6,7 @@ import {
   readJsonLimited,
   requireActiveAccess,
 } from "@/lib/server/security";
-import { getSessionEmail } from "@/lib/server/auth";
+import { getVerifiedSession } from "@/lib/server/auth";
 import { analyzeStrategy, projectNameFromStrategy } from "@/lib/traderlab/engine";
 import { listProjects, saveProject } from "@/lib/server/store";
 import { parseTradeCsv } from "@/lib/traderlab/tradeLog";
@@ -16,15 +16,15 @@ export async function GET(request: Request) {
   const limited = rateLimit(request, "projects:get", { limit: 120, windowMs: 60_000 });
   if (limited) return limited;
 
-  const email = await getSessionEmail();
-  if (!email) {
+  const session = await getVerifiedSession();
+  if (!session) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   }
 
-  const accessCheck = await requireActiveAccess(email);
+  const accessCheck = await requireActiveAccess(session.email, session.accessToken);
   if (accessCheck.error) return accessCheck.error;
 
-  return NextResponse.json({ projects: await listProjects(email) });
+  return NextResponse.json({ projects: await listProjects(session.email, session.accessToken) });
 }
 
 export async function POST(request: Request) {
@@ -39,12 +39,12 @@ export async function POST(request: Request) {
 
   const text = typeof body?.text === "string" ? body.text.trim() : "";
 
-  const email = await getSessionEmail();
-  if (!email) {
+  const session = await getVerifiedSession();
+  if (!session) {
     return NextResponse.json({ error: "Sign in required." }, { status: 401 });
   }
 
-  const accessCheck = await requireActiveAccess(email);
+  const accessCheck = await requireActiveAccess(session.email, session.accessToken);
   if (accessCheck.error) return accessCheck.error;
 
   if (text.length < 20) {
@@ -65,7 +65,7 @@ export async function POST(request: Request) {
   const analysis = analyzeStrategy(text, { trades: parsed?.trades, dataWarnings: parsed?.warnings });
   const project: StrategyProject = {
     id: randomUUID(),
-    email,
+    email: session.email,
     name: typeof body?.name === "string" && body.name.trim() ? body.name.trim() : projectNameFromStrategy(text),
     text,
     status: analysis.readiness === "ready" ? "Ready for paper validation" : "Needs fixes",
@@ -76,5 +76,5 @@ export async function POST(request: Request) {
     updatedAt: now,
   };
 
-  return NextResponse.json({ project: await saveProject(project) }, { status: 201 });
+  return NextResponse.json({ project: await saveProject(project, session.accessToken) }, { status: 201 });
 }

@@ -37,11 +37,23 @@ export async function createAuthServerClient() {
 }
 
 export async function getSessionEmail() {
+  const session = await getVerifiedSession();
+  return session?.email || null;
+}
+
+export async function getVerifiedSession() {
   if (!isAuthConfigured()) return null;
 
   const supabase = await createAuthServerClient();
-  const { data, error } = await supabase.auth.getUser();
+  const { data: userData, error } = await supabase.auth.getUser();
 
   if (error) return null;
-  return data.user?.email?.trim().toLowerCase() || null;
+  const email = userData.user?.email?.trim().toLowerCase();
+  if (!email) return null;
+
+  const { data: sessionData } = await supabase.auth.getSession();
+  const accessToken = sessionData.session?.access_token;
+  if (!accessToken) return null;
+
+  return { email, accessToken };
 }
